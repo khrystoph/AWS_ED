@@ -7,11 +7,16 @@ from os import getenv
 from boto.route53.record import ResourceRecordSets
 import creds
 
-baseDomain = '<base domain here>'
-subDomain = '<subdomain here>'
+#configuration section
+baseDomain = '<set base domain here>'
+subDomain = '<set subdomain here>'
 fullDomain = subDomain + "." + baseDomain
 FQDN = baseDomain + "."
+ttl = 300
+record_type = 'A'
+#end configuration section
 
+#pull credentials from the configured aws-cli tool
 AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY = creds.get_credentials()
 
 amazonIpCheck = StringIO()
@@ -24,8 +29,7 @@ c.close()
 
 ip = amazonIpCheck.getvalue()
 
-currentValue = socket.gethostbyname(subDomain + "." + baseDomain)
-currentValue = currentValue.replace("'", "")
+currentValue = socket.gethostbyname(fullDomain)
 ip = ip.replace("\n", "")
 print(currentValue)
 print(ip)
@@ -45,9 +49,9 @@ if currentValue != ip:
     print(records)
     r53rr = ResourceRecordSets(r53, zone_id)
     print(zone_id)
-    d_record = r53rr.add_change("DELETE", fullDomain, "A", 300)
+    d_record = r53rr.add_change("DELETE", fullDomain, record_type, ttl)
     d_record.add_value(currentValue)
-    c_record = r53rr.add_change("CREATE", fullDomain, "A", 300)
+    c_record = r53rr.add_change("CREATE", fullDomain, record_type, ttl)
     c_record.add_value(ip)
     print(d_record)
     print(c_record)

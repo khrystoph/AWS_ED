@@ -16,18 +16,22 @@ In the future, this will apply to ec2 instances on stop/start so that you can cr
 You need to fill in the sections that have `<>` with the relevant information. Also, you need to make sure you have set up your hosted zone within route53 prior to running this application. Also, this is written in python2, not python 3. So, if you have python 3 installed, you need to make sure you also have python 2 installed on your system and you will need to directly call python2 to run the project. Here is what my cron file looks like:
 
 ```cron
-*/5 * * * * <username> /usr/bin/python2 ~/github/elasticDNS/edd.py
+*/6 * * * * /usr/bin/python2 ~/github/elasticDNS/edd.py
 ```
 
-Here are the relevant lines you need to configure manually to get the program to work:
+Due to the current TTL of the domain setting, you should use a cron that runs every 6 minutes to make sure that your change has time to propagate before you make a second call to avoid double calls.
+
+Here are the relevant lines you need to configure manually to get the program to work in edd.py:
 
 ```python
-baseDomain = '<Enter base domain here>'
+baseDomain = '<enter base domain here>'
 subDomain = '<enter subdomain here>'
-AWS_ACCESS_KEY_ID = '<Enter AWS_ACCESS_KEY_ID HERE>'
-AWS_SECRET_ACCESS_KEY = '<Enter AWS_SECRET_ACCESS_KEY HERE>'
-AWS_R53_ADDR_1 = "<Enter first address to update>"
-AWS_R53_ADDR_2 = "<Enter second address to update>"
+```
+
+You also need to modify this line in creds.py:
+
+```python
+file = open('/<path to user's home directory>/.aws/credentials')
 ```
 
 As of this particular writing, AWS_R53_ADDR_2 is not being used...in fact, this is likely going to be removed as I was GOING to manually update two resource records, but I opted against it at this time. Eventually, this will be implemented in a loop based on an array which tracks the number of Addresses you want to update. This will all be done at config time.
