@@ -5,24 +5,14 @@ import socket
 from os import path
 from os import getenv
 from boto.route53.record import ResourceRecordSets
+import creds
 
-
-baseDomain = '<Enter base domain here>'
-subDomain = '<enter subdomain here>'
+baseDomain = '<base domain here>'
+subDomain = '<subdomain here>'
 fullDomain = subDomain + "." + baseDomain
 FQDN = baseDomain + "."
 
-#This section will be added in a future release once I figure out how to parse the aws credentials file the way I want to.
-#credsFile = file(path.abspath(getenv("HOME") + "/.aws/credentials"))
-#for line in credsFile:
-#    if 'AWS_ACCESS_KEY_ID':
-#        AWS_ACCESS_KEY_ID = line.strip('AWS_ACCESS_KEY_ID = ')
-#        print(AWS_ACCESS_KEY_ID)
-
-AWS_ACCESS_KEY_ID = '<Enter AWS_ACCESS_KEY_ID HERE>'
-AWS_SECRET_ACCESS_KEY = '<Enter AWS_SECRET_ACCESS_KEY HERE>'
-AWS_R53_ADDR_1 = "<Enter first address to update>"
-AWS_R53_ADDR_2 = "<Enter second address to update>"
+AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY = creds.get_credentials()
 
 amazonIpCheck = StringIO()
 c = pycurl.Curl()
@@ -51,13 +41,13 @@ if currentValue != ip:
     zone_id = zone.Id
     zone_id = zone_id.strip('/hostedzone/')
 
-    records = r53.get_all_rrsets(zone_id,'A',AWS_R53_ADDR_1,maxitems=1)[0]
+    records = r53.get_all_rrsets(zone_id,'A',fullDomain,maxitems=1)[0]
     print(records)
     r53rr = ResourceRecordSets(r53, zone_id)
     print(zone_id)
-    d_record = r53rr.add_change("DELETE", AWS_R53_ADDR_1, "A", 300)
+    d_record = r53rr.add_change("DELETE", fullDomain, "A", 300)
     d_record.add_value(currentValue)
-    c_record = r53rr.add_change("CREATE", AWS_R53_ADDR_1, "A", 300)
+    c_record = r53rr.add_change("CREATE", fullDomain, "A", 300)
     c_record.add_value(ip)
     print(d_record)
     print(c_record)
