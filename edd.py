@@ -8,12 +8,18 @@ from boto.route53.record import ResourceRecordSets
 import creds
 
 #configuration section
-baseDomain = '<set base domain here>'
-subDomain = '<set subdomain here>'
-fullDomain = subDomain + "." + baseDomain
-FQDN = baseDomain + "."
+baseDomain = '<hostname here>'
+subDomain = '<sub domain here if you have one>'
+if subDomain is not '':
+    fullDomain = subDomain + "." + baseDomain
+else:
+    fullDomain = baseDomain
 ttl = 300
-record_type = 'A'
+record_type = 'AAAA'
+if record_type is 'A':
+    socktype = socket.AF_INET
+elif record_type is "AAAA":
+    socktype = socket.AF_INET6
 #end configuration section
 
 #pull credentials from the configured aws-cli tool
@@ -21,15 +27,20 @@ AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY = creds.get_credentials()
 
 amazonIpCheck = StringIO()
 c = pycurl.Curl()
-c.setopt(c.URL, 'http://checkip.amazonaws.com')
-c.setopt(c.IPRESOLVE, c.IPRESOLVE_V4)
+c.setopt(c.URL, 'https://icanhazip.com')
+if record_type is 'AAAA':
+    c.setopt(c.IPRESOLVE, c.IPRESOLVE_V6)
+elif record_type is 'A':
+    c.setopt(c.IPRESOLVE, c.IPRESOLVE_V4)
 c.setopt(c.WRITEDATA, amazonIpCheck)
 c.perform()
 c.close()
 
 ip = amazonIpCheck.getvalue()
 
-currentValue = socket.gethostbyname(fullDomain)
+host = socket.getaddrinfo(fullDomain, None, socktype)
+currentValue = host[0][4][0]
+
 ip = ip.replace("\n", "")
 print(currentValue)
 print(ip)
@@ -41,11 +52,11 @@ if currentValue != ip:
         aws_access_key_id=AWS_ACCESS_KEY_ID,
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
-    zone = r53.get_hosted_zone_by_name(FQDN)
+    zone = r53.get_hosted_zone_by_name(fullDomain)
     zone_id = zone.Id
     zone_id = zone_id.strip('/hostedzone/')
 
-    records = r53.get_all_rrsets(zone_id,'A',fullDomain,maxitems=1)[0]
+    records = r53.get_all_rrsets(zone_id,record_type,fullDomain,maxitems=1)[0]
     print(records)
     r53rr = ResourceRecordSets(r53, zone_id)
     print(zone_id)
