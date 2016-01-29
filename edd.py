@@ -8,8 +8,8 @@ from boto.route53.record import ResourceRecordSets
 import creds
 
 #configuration section
-baseDomain = '<base domain here>'
-subDomain = '<subdomain here>'
+baseDomain = '<enter base domain here>'
+subDomain = '<enter subdomain here'
 record_type = '<enter record type here. A or AAAA>'
 ttl = 300
 if subDomain is not '':
@@ -38,8 +38,7 @@ c.close()
 
 ip = amazonIpCheck.getvalue()
 
-host = socket.getaddrinfo(fullDomain, None, socktype)
-currentValue = host[0][4][0]
+currentValue = socket.getaddrinfo(fullDomain, None, socktype)[0][4][0]
 
 ip = ip.replace("\n", "")
 print(currentValue)
