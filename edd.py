@@ -10,15 +10,12 @@ import creds
 #configuration section
 baseDomain = '<base domain here>'
 subDomain = '<subdomain here>'
+record_type = '<enter record type here. A or AAAA>'
+ttl = 300
 if subDomain is not '':
     fullDomain = subDomain + "." + baseDomain
 else:
     fullDomain = baseDomain
-
-fqdn = baseDomain + "."
-print(fqdn + "\n" + fullDomain)
-ttl = 300
-record_type = 'AAAA'
 if record_type is 'A':
     socktype = socket.AF_INET
 elif record_type is "AAAA":
