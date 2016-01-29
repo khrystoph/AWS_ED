@@ -8,12 +8,15 @@ from boto.route53.record import ResourceRecordSets
 import creds
 
 #configuration section
-baseDomain = '<hostname here>'
-subDomain = '<sub domain here if you have one>'
+baseDomain = '<base domain here>'
+subDomain = '<subdomain here>'
 if subDomain is not '':
     fullDomain = subDomain + "." + baseDomain
 else:
     fullDomain = baseDomain
+
+fqdn = baseDomain + "."
+print(fqdn + "\n" + fullDomain)
 ttl = 300
 record_type = 'AAAA'
 if record_type is 'A':
@@ -52,7 +55,7 @@ if currentValue != ip:
         aws_access_key_id=AWS_ACCESS_KEY_ID,
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
-    zone = r53.get_hosted_zone_by_name(fullDomain)
+    zone = r53.get_hosted_zone_by_name(baseDomain)
     zone_id = zone.Id
     zone_id = zone_id.strip('/hostedzone/')
 
