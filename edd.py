@@ -6,10 +6,13 @@ from os import path
 from os import getenv
 from boto.route53.record import ResourceRecordSets
 import creds
+import boto3
+
+client = boto3.client('route53')
 
 #configuration section
 baseDomain = '<enter base domain here>'
-subDomain = '<enter subdomain here'
+subDomain = '<enter subdomain here>'
 record_type = '<enter record type here. A or AAAA>'
 ttl = 300
 if subDomain is not '':
@@ -18,7 +21,7 @@ else:
     fullDomain = baseDomain
 if record_type is 'A':
     socktype = socket.AF_INET
-elif record_type is "AAAA":
+elif record_type is 'AAAA':
     socktype = socket.AF_INET6
 #end configuration section
 
@@ -47,7 +50,7 @@ print(ip)
 if currentValue != ip:
     print("IP addresses do not match. Jumping into update function")
 
-    r53 = boto.route53.connect_to_region('universal',
+    '''r53 = boto.route53.connect_to_region('universal',
         aws_access_key_id=AWS_ACCESS_KEY_ID,
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
@@ -66,6 +69,30 @@ if currentValue != ip:
     print(d_record)
     print(c_record)
     r53rr.commit()
+    '''
+
+    #boto3 section here. I will be converting to this later on:
+    zone = client.list_hosted_zones_by_name(DNSName=baseDomain)['HostedZones'][0]['Id'].strip('/hostedzone/')
+    record = client.list_resource_record_sets(HostedZoneId=zone,StartRecordName=fullDomain,
+                    StartRecordType=record_type,MaxItems='1')['ResourceRecordSets'][0]['ResourceRecords'][0]['Value']
+
+    record_update = client.change_resource_record_sets(HostedZoneId=zone,ChangeBatch={'Changes':[{
+        'Action': 'DELETE',
+        'ResourceRecordSet': {'Name': fullDomain,'Type': record_type,'TTL': ttl,
+        'ResourceRecords':[
+            {
+                'Value': record
+            },
+        ]}},
+        {'Action': 'CREATE',
+        'ResourceRecordSet': {'Name': fullDomain,'Type': record_type,'TTL': ttl,
+        'ResourceRecords':[
+            {
+                'Value': ip
+            },
+        ]}},
+    ]})
+    print(record_update['ChangeInfo'])
 
 else:
     print("Ip addresses match. Not changing anything")

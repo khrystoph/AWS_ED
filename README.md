@@ -26,6 +26,7 @@ Here are the relevant lines you need to configure manually to get the program to
 ```python
 baseDomain = '<enter base domain here>'
 subDomain = '<enter subdomain here>'
+record_type = '<enter type here. A or AAAA>'
 ```
 
 You also need to modify this line in creds.py:
@@ -37,3 +38,5 @@ file = open('/<path to user's home directory>/.aws/credentials')
 As of this particular writing, AWS_R53_ADDR_2 is not being used...in fact, this is likely going to be removed as I was GOING to manually update two resource records, but I opted against it at this time. Eventually, this will be implemented in a loop based on an array which tracks the number of Addresses you want to update. This will all be done at config time.
 
 You do not need to add the period "." at the end of the base domain. Route53 will allow for the domain name without the FQDN "." at the end and will still find the resource record. I'm also going to remove some of these variables as they are redundant, but it was better to make the first push and then clean it up as I go.
+
+I have now converted this over to use boto3 instead of boto2. If you would like to use boto2, you can uncomment the boto2 section and comment out the boto3 section. I will likely split this out into its own python file based on which one you have installed.
