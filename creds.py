@@ -1,8 +1,9 @@
 
 def get_credentials():
     import re
+    import os.path
 
-    file = open('/<path to home directory>/.aws/credentials')
+    file = open(os.path.expanduser('~/.aws/credentials'))
 
     for line in file:
         if 'default' in line:
