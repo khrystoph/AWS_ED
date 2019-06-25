@@ -8,8 +8,10 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -56,25 +58,110 @@ func init() {
 	flag.StringVar(&awsRegion, "region", "us-east-1", "Enter region you wish to connect with. Default: us-east-1")
 }
 
-func handleIPv4() {
+//handleIPv4 handles cases where A record in r53. On match, do nothing. On mismatch, update to new val.
+func handleIPv4(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
+	var (
+		ipv4String string
+	)
+	svc := route53.New(sess)
 
+	for i := 0; i < 3; i++ {
+		currentIPv4, err := http.Get("https://ipv4.icanhazip.com")
+		defer currentIPv4.Body.Close()
+		if err != nil && i < 3 {
+			time.Sleep(time.Duration(i) * time.Second)
+			err = nil
+			continue
+		} else if err != nil && i >= 3 {
+			Error.Println("Error getting ipv4 address.")
+			return false, err
+		} else {
+			body, _ := ioutil.ReadAll(currentIPv4.Body)
+			ipv4String = string(body)
+			break
+		}
+	}
+	if *rrecord.ResourceRecords[0].Value == strings.Trim(ipv4String, "\n") {
+		Info.Println("IPv4 Records match. Doing nothing.")
+		return false, nil
+	}
+
+	Info.Println("IPv4 Records do not match. Updating.")
+	Info.Println("Current IPv4 address: ", ipv4String)
+	Info.Println("Current IPv4 record: ", *rrecord.ResourceRecords[0].Value)
+	*rrecord.ResourceRecords[0].Value = ipv4String
+	changeAction := "UPSERT"
+	changeBatch := route53.ChangeBatch{Changes: []*route53.Change{&route53.Change{Action: &changeAction, ResourceRecordSet: rrecord}}}
+	input := route53.ChangeResourceRecordSetsInput{
+		HostedZoneId: &zoneID,
+		ChangeBatch:  &changeBatch,
+	}
+	output, err := svc.ChangeResourceRecordSets(&input)
+	if err != nil {
+		return false, err
+	}
+	Info.Println(output)
+	return true, nil
 }
 
-func handleIPv6() {
+//handleIPv6 handles cases where AAAA record in r53. On match, do nothing. On mismatch, update to new val.
+func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
+	var (
+		ipv6String string
+	)
+	svc := route53.New(sess)
+	for i := 0; i < 3; i++ {
+		currentIPv6, err := http.Get("https://ipv6.icanhazip.com")
+		defer currentIPv6.Body.Close()
+		if err != nil && i < 3 {
+			time.Sleep(time.Duration(i) * time.Second)
+			err = nil
+			continue
+		} else if err != nil && i >= 3 {
+			Error.Println("Error getting ipv6 address.")
+			return false, err
+		} else {
+			body, _ := ioutil.ReadAll(currentIPv6.Body)
+			ipv6String = string(body)
+			break
+		}
+	}
+	if *rrecord.ResourceRecords[0].Value == strings.Trim(ipv6String, "\n") {
+		Info.Println("Records match. Doing nothing.")
+		return false, nil
+	}
 
+	Info.Println("Records do not match. Updating.")
+	Info.Println("Current IPv6 address: ", ipv6String)
+	Info.Println("Current IPv6 record: ", *rrecord.ResourceRecords[0].Value)
+	*rrecord.ResourceRecords[0].Value = ipv6String
+	changeAction := "UPSERT"
+	changeBatch := route53.ChangeBatch{Changes: []*route53.Change{&route53.Change{Action: &changeAction, ResourceRecordSet: rrecord}}}
+	input := route53.ChangeResourceRecordSetsInput{
+		HostedZoneId: &zoneID,
+		ChangeBatch:  &changeBatch,
+	}
+	output, err := svc.ChangeResourceRecordSets(&input)
+	if err != nil {
+		return false, err
+	}
+	Info.Println(output)
+	return true, nil
 }
 
+//checkHostDomainNameExists checks whether or not the host has a domain name set
 func checkHostDomainNameExists(domainPtr *string) (err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	} else {
 		Info.Println("Using system hostname: ", hostname)
-		domainPtr = &hostname
+		*domainPtr = hostname
 	}
 	return err
 }
 
+//checkDomainExists checks that the domain exists in Route53
 func checkDomainExists(baseDomain string) (zoneID string, err error) {
 	svc := route53.New(sess)
 
@@ -99,6 +186,7 @@ func checkDomainExists(baseDomain string) (zoneID string, err error) {
 	return zoneID, err
 }
 
+//checkZoneRecords finds resource record sets and returns the set of them that match the domain
 func checkZoneRecords(zID string) (zonerecords []route53.ResourceRecordSet, err error) {
 	svc := route53.New(sess)
 
@@ -113,8 +201,6 @@ func checkZoneRecords(zID string) (zonerecords []route53.ResourceRecordSet, err 
 			zonerecords = append(zonerecords, *record)
 		}
 	}
-
-	Info.Println(zonerecords)
 
 	return zonerecords, err
 }
@@ -139,9 +225,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	Info.Println("baseDomain: ", baseDomain)
 	Info.Println("Check if domain is default")
-	if baseDomain == "example.com" {
+	if domain == "example.com" {
 		Info.Println("Checking if there is a locally defined FQDN.")
 		err = checkHostDomainNameExists(&domain)
 		if err != nil {
@@ -169,6 +254,37 @@ func main() {
 	Info.Println("ZoneID: ", zoneID)
 	Info.Println("Checking to see what records exist for the domain.")
 	records, err := checkZoneRecords(zoneID)
-	println(records)
+	if err != nil {
+		Error.Println("Records: ", records)
+		Error.Println(err)
+		os.Exit(1)
+	}
 	Info.Println("Checking if domain needs to be updated")
+	var updated = false
+	for _, record := range records {
+		if *record.Type == "A" {
+			updated, err = handleIPv4(&record, zoneID)
+			if err != nil {
+				Error.Println(err)
+				os.Exit(1)
+			}
+		}
+		if *record.Type == "AAAA" {
+			updated, err = handleIPv6(&record, zoneID)
+			if err != nil {
+				Error.Println(err)
+				os.Exit(1)
+			}
+		}
+	}
+	records, err = checkZoneRecords(zoneID)
+	if err != nil {
+		Error.Println("Records: ", records)
+		Error.Println(err)
+		os.Exit(1)
+	}
+	if updated {
+		Info.Println(records)
+	}
+	return
 }
