@@ -129,11 +129,11 @@ func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool,
 		}
 	}
 	if *rrecord.ResourceRecords[0].Value == strings.Trim(ipv6String, "\n") {
-		Info.Println("Records match. Doing nothing.")
+		Info.Println("IPv6 Records match. Doing nothing.")
 		return false, nil
 	}
 
-	Info.Println("Records do not match. Updating.")
+	Info.Println("IPv6 Records do not match. Updating.")
 	Info.Println("Current IPv6 address: ", ipv6String)
 	Info.Println("Current IPv6 record: ", *rrecord.ResourceRecords[0].Value)
 	*rrecord.ResourceRecords[0].Value = ipv6String
