@@ -31,6 +31,8 @@ var (
 	errorHandle                       io.Writer = os.Stderr
 	sess                              *session.Session
 	maxItems                          = "100"
+	moreIPv4                          = "https://ipv4.moreip.jbecomputersolutions.com"
+	moreIPv6                          = "https://ipv6.moreip.jbecomputersolutions.com"
 )
 
 func init() {
@@ -66,7 +68,7 @@ func handleIPv4(rrecord *route53.ResourceRecordSet, zoneID string) (update bool,
 	svc := route53.New(sess)
 
 	for i := 0; i < 3; i++ {
-		currentIPv4, err := http.Get("https://ipv4.icanhazip.com")
+		currentIPv4, err := http.Get(moreIPv4)
 		defer currentIPv4.Body.Close()
 		if err != nil && i < 3 {
 			time.Sleep(time.Duration(i) * time.Second)
@@ -111,7 +113,7 @@ func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool,
 	)
 	svc := route53.New(sess)
 	for i := 0; i < 3; i++ {
-		currentIPv6, err := http.Get("https://ipv6.icanhazip.com")
+		currentIPv6, err := http.Get(moreIPv6)
 		defer currentIPv6.Body.Close()
 		if err != nil && i < 3 {
 			time.Sleep(time.Duration(i) * time.Second)
