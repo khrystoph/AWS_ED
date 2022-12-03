@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pycurl
 from StringIO import StringIO
 import boto.route53
@@ -11,9 +12,9 @@ import boto3
 client = boto3.client('route53')
 
 #configuration section
-baseDomain = '<enter base domain here>'
-subDomain = '<enter subdomain here>'
-record_type = '<enter record type here. A or AAAA>'
+baseDomain = 'jbecomputersolutions.com'
+subDomain = 'home'
+record_type = 'A'
 ttl = 300
 if subDomain is not '':
     fullDomain = subDomain + "." + baseDomain

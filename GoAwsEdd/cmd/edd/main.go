@@ -3,8 +3,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,11 +16,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/route53"
 )
 
 var (
@@ -29,10 +28,9 @@ var (
 	infoHandle                        io.Writer = os.Stdout
 	warningHandle                     io.Writer = os.Stderr
 	errorHandle                       io.Writer = os.Stderr
-	sess                              *session.Session
-	maxItems                          = "100"
-	moreIPv4                          = "https://ipv4.moreip.jbecomputersolutions.com"
-	moreIPv6                          = "https://ipv6.moreip.jbecomputersolutions.com"
+	maxItems                          int32     = 100
+	moreIPv4                                    = "https://ipv4.moreip.jbecomputersolutions.com"
+	moreIPv6                                    = "https://ipv6.moreip.jbecomputersolutions.com"
 )
 
 func init() {
@@ -60,12 +58,12 @@ func init() {
 	flag.StringVar(&awsRegion, "region", "us-east-1", "Enter region you wish to connect with. Default: us-east-1")
 }
 
-//handleIPv4 handles cases where A record in r53. On match, do nothing. On mismatch, update to new val.
+// handleIPv4 handles cases where A record in r53. On match, do nothing. On mismatch, update to new val.
 func handleIPv4(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
 	var (
 		ipv4String string
 	)
-	svc := route53.New(sess)
+	svc := route53.NewFromConfig(sessionProfile)
 
 	for i := 0; i < 3; i++ {
 		currentIPv4, err := http.Get(moreIPv4)
@@ -106,7 +104,7 @@ func handleIPv4(rrecord *route53.ResourceRecordSet, zoneID string) (update bool,
 	return true, nil
 }
 
-//handleIPv6 handles cases where AAAA record in r53. On match, do nothing. On mismatch, update to new val.
+// handleIPv6 handles cases where AAAA record in r53. On match, do nothing. On mismatch, update to new val.
 func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
 	var (
 		ipv6String string
@@ -151,19 +149,7 @@ func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool,
 	return true, nil
 }
 
-//checkHostDomainNameExists checks whether or not the host has a domain name set
-func checkHostDomainNameExists(domainPtr *string) (err error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	} else {
-		Info.Println("Using system hostname: ", hostname)
-		*domainPtr = hostname
-	}
-	return err
-}
-
-//checkDomainExists checks that the domain exists in Route53
+// checkDomainExists checks that the domain exists in Route53
 func checkDomainExists(baseDomain string) (zoneID string, err error) {
 	svc := route53.New(sess)
 
@@ -188,12 +174,21 @@ func checkDomainExists(baseDomain string) (zoneID string, err error) {
 	return zoneID, err
 }
 
-//checkZoneRecords finds resource record sets and returns the set of them that match the domain
-func checkZoneRecords(zID string) (zonerecords []route53.ResourceRecordSet, err error) {
-	svc := route53.New(sess)
+// checkZoneRecords finds resource record sets and returns the set of them that match the domain
+func checkZoneRecords(zID string) (zonerecords []route53.ChangeResourceRecordSetsOutput, err error) {
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithSharedConfigProfile(sessionProfile),
+	)
+
+	if err != nil {
+		fmt.Errorf("error loading Default config for profile: %s. Message:\n%w", sessionProfile, err)
+		return
+	}
+
+	svc := route53.NewFromConfig(cfg)
 
 	input := route53.ListResourceRecordSetsInput{HostedZoneId: &zID, MaxItems: &maxItems}
-	output, err := svc.ListResourceRecordSets(&input)
+	output, err := svc.ListResourceRecordSets(context.TODO(), &input)
 
 	if err != nil {
 		return zonerecords, err
@@ -213,19 +208,6 @@ func main() {
 		err        error
 		baseDomain string
 	)
-	traceHandle = ioutil.Discard
-
-	sess, err = session.NewSession(&aws.Config{
-		Region:      aws.String(awsRegion),
-		Credentials: credentials.NewSharedCredentials("", sessionProfile),
-	})
-
-	_, err = sess.Config.Credentials.Get()
-	if err != nil {
-		Error.Println("error retrieving credentials. Profile name: ", sessionProfile)
-		Error.Println("Error msg: ", err)
-		os.Exit(1)
-	}
 
 	Info.Println("Check if domain is default")
 	if domain == "example.com" {
@@ -236,6 +218,7 @@ func main() {
 		}
 	}
 
+	//remove the trailing dot returned in DNS names
 	if domain[len(domain)-1:] != "." {
 		domain += "."
 	}
