@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 import pycurl
 from StringIO import StringIO
-import boto.route53
 import socket
-from os import path
-from os import getenv
-from boto.route53.record import ResourceRecordSets
-import creds
+from PyEDD import creds
 import boto3
 
 client = boto3.client('route53')
