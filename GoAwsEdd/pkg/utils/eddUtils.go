@@ -24,43 +24,29 @@ func ResolveFQDN(domain *string) (ipList []net.IP, err error) {
 	return
 }
 
-func LookUpIPClientIP(ipv4Endpoint, ipv6Endpoint string) (IPAddrs []string, err []error) {
-	ipv4, errV4 := http.Get(ipv4Endpoint)
-	if errV4 != nil {
-		Error.Printf("Unable to retrieve IPv4 Addr. Error msg: %v. Setting to nil.\n", errV4)
-		IPAddrs = append(IPAddrs, "nil")
-		err = append(err, errV4)
-	} else {
-		defer ipv4.Body.Close()
-		ipv4Bytes, errV4Bytes := io.ReadAll(ipv4.Body)
-		if errV4Bytes != nil {
-			Error.Printf("Unable to extract IPv4 String from response. Error msg: %s.\n", errV4Bytes)
-			err = append(err, errV4Bytes)
-		} else {
-			IPAddrs = append(
-				IPAddrs,
-				string(ipv4Bytes[:]),
-			)
-		}
+func LookUpIPClientIP(endpoint string) (IPAddr string, err error) {
+	endpointResp, err := http.Get(endpoint)
+	if err != nil {
+		Error.Printf("Unable to retrieve IP address from %s. Error msg: %s.\n", endpoint, err)
+		return "", err
 	}
-	ipv6, errV6 := http.Get(ipv6Endpoint)
-	if errV6 != nil {
-		Error.Printf("Unable to retrieve IPv6 Addr. Error msg: %v. Setting to nil.\n", errV6)
-		err = append(err, errV6)
-	} else {
-		defer ipv4.Body.Close()
-		ipv6Bytes, errV6Bytes := io.ReadAll(ipv6.Body)
-		if errV6Bytes != nil {
-			Error.Printf("Unable to extract IPv4 String from Response. Error msg: %s.\n", errV6Bytes)
-			err = append(err, errV6Bytes)
-		} else {
-			IPAddrs = append(
-				IPAddrs,
-				string(ipv6Bytes[:]),
-			)
-		}
+	defer endpointResp.Body.Close()
+
+	//read response body and extract the bytes array, then check for errors
+	IPAddrBytes, err := io.ReadAll(endpointResp.Body)
+	if err != nil {
+		Error.Printf("Unable to read endpoint response %s", err)
+		return "", err
 	}
-	return
+
+	//drop any trailing newline character
+	if IPAddrBytes[len(IPAddrBytes)-1] == '\n' {
+		IPAddrBytes = IPAddrBytes[:len(IPAddrBytes)-1]
+	}
+
+	//Convert Bytes returned from request into string
+	IPAddr = string(IPAddrBytes)
+	return IPAddr, nil
 }
 
 // CheckDomainExists checks the DNS registrar for the zone

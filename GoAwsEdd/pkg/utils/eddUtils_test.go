@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"net"
 	"testing"
 )
 
@@ -20,9 +21,19 @@ func TestLookUpIPClientIP(t *testing.T) {
 		v4Endpoint = "https://ipv4.moreip.jbecomputersolutions.com"
 		v6Endpoint = "https://ipv6.moreip.jbecomputersolutions.com"
 	)
-	got, err := LookUpIPClientIP(v4Endpoint, v6Endpoint)
-	assert.Equal(t, 0, len(err), "Expecting 0 length for errors. Got %d errors.\n", len(err))
-	for _, ip := range got {
-		fmt.Printf("%s", ip)
-	}
+	//check IPv4 Validity
+	gotv4, err := LookUpIPClientIP(v4Endpoint)
+	assert.Equal(t, nil, err, "Expecting nil error. Err msg: %s.\n", err)
+	fmt.Printf("gotv4val: %v\n", gotv4)
+	isNotNilIP := net.ParseIP(gotv4)
+	assert.NotEqual(t, nil, isNotNilIP, "Expecting non-nil value, got: %v", isNotNilIP)
+	fmt.Printf("result of isNotNilIP: %v\n", isNotNilIP)
+
+	//Check IPv6 validity
+	gotv6, err := LookUpIPClientIP(v6Endpoint)
+	assert.Equal(t, nil, err, "Expecting 0 errors. Err msg: %s.\n", err)
+	isNotNilIPv6 := net.ParseIP(gotv6)
+	assert.NotEqual(t, nil, isNotNilIPv6, "Expecting non-nil value, got: %v", isNotNilIPv6)
+	fmt.Printf("gotv6val: %v\n", gotv6)
+	fmt.Printf("result of isNotNilIPv6: %v\n", isNotNilIPv6)
 }
