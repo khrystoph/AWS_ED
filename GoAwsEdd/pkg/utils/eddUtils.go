@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -49,8 +50,13 @@ func LookUpIPClientIP(endpoint string) (IPAddr string, err error) {
 	return IPAddr, nil
 }
 
-// CheckDomainExists checks the DNS registrar for the zone
+// CheckDomainExists checks the DNS registrar for the zone based on which plugin is selected
 func CheckDomainExists(baseDomain, plugin string) (zoneID string, err error) {
-
+	switch plugin {
+	case "aws":
+		zoneID, err = CheckRoute53DomainExists(baseDomain)
+	default:
+		return "", errors.New("no matching plugin for retrieving zone info")
+	}
 	return "", nil
 }
