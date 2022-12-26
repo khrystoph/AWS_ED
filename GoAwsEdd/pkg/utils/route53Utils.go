@@ -55,3 +55,27 @@ func CheckRoute53DomainExists(baseDomain string) (zoneID string, err error) {
 	fmt.Printf("zoneID: %s\n", zoneID)
 	return zoneID, nil
 }
+
+// RetrieveResourceRecordSet retrieves the resource records from a given zoneID and returns IP addresses of the RR set
+func RetrieveResourceRecordSet(zoneID, baseDomain, rrType string) (rrID string, err error) {
+	svcClient, err := Route53Client()
+	if err != nil {
+		fmt.Printf("unable to initialize route53 client. Error msg:%s\n", err)
+		return "", err
+	}
+	rrSetsInput := &route53.ListResourceRecordSetsInput{
+		HostedZoneId: &zoneID,
+	}
+	resourceRecords, err := svcClient.ListResourceRecordSets(context.Background(), rrSetsInput)
+	if err != nil {
+		fmt.Printf("unable to retrieve resource records. Error msg: %s\n", err)
+		return "", err
+	}
+	rrJSON, err := json.MarshalIndent(resourceRecords, "", "  ")
+	if err != nil {
+		fmt.Printf("unable to marshal resource records. Error msg: %s", err)
+		return "", err
+	}
+	fmt.Printf("Resource records:\n%s", rrJSON)
+	return
+}
