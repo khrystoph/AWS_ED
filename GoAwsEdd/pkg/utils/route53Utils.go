@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
+	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"strings"
 )
 
@@ -57,11 +58,11 @@ func CheckRoute53DomainExists(baseDomain string) (zoneID string, err error) {
 }
 
 // RetrieveResourceRecordSet retrieves the resource records from a given zoneID and returns IP addresses of the RR set
-func RetrieveResourceRecordSet(zoneID, baseDomain, rrType string) (rrID string, err error) {
+func RetrieveResourceRecordSet(zoneID, baseDomain, rrType string) (resourceRecord types.ResourceRecordSet, err error) {
 	svcClient, err := Route53Client()
 	if err != nil {
 		fmt.Printf("unable to initialize route53 client. Error msg:%s\n", err)
-		return "", err
+		return types.ResourceRecordSet{}, err
 	}
 	rrSetsInput := &route53.ListResourceRecordSetsInput{
 		HostedZoneId: &zoneID,
@@ -69,13 +70,15 @@ func RetrieveResourceRecordSet(zoneID, baseDomain, rrType string) (rrID string, 
 	resourceRecords, err := svcClient.ListResourceRecordSets(context.Background(), rrSetsInput)
 	if err != nil {
 		fmt.Printf("unable to retrieve resource records. Error msg: %s\n", err)
-		return "", err
+		return types.ResourceRecordSet{}, err
 	}
-	rrJSON, err := json.MarshalIndent(resourceRecords, "", "  ")
-	if err != nil {
-		fmt.Printf("unable to marshal resource records. Error msg: %s", err)
-		return "", err
+
+	for _, records := range resourceRecords.ResourceRecordSets {
+		if *records.Name == baseDomain && string(records.Type) == rrType {
+			resourceRecord = records
+			break
+		}
 	}
-	fmt.Printf("Resource records:\n%s", rrJSON)
-	return
+
+	return resourceRecord, nil
 }
