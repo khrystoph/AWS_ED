@@ -3,273 +3,90 @@
 package main
 
 import (
-	"context"
-	"errors"
+	"cmd/edd/pkg/edd"
+	"cmd/edd/pkg/utils"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/route53"
-	"io"
-	"io/ioutil"
-	"log"
-	"net/http"
+	"net"
 	"os"
 	"strings"
-	"time"
+	"sync"
 )
 
 var (
-	Trace                             *log.Logger
-	Info                              *log.Logger
-	Warning                           *log.Logger
-	Error                             *log.Logger
-	domain, sessionProfile, awsRegion string
-	traceHandle                       io.Writer
-	infoHandle                        io.Writer = os.Stdout
-	warningHandle                     io.Writer = os.Stderr
-	errorHandle                       io.Writer = os.Stderr
+	domain, moreIPv4, moreIPv6,dnsProviderPlugin string
 	maxItems                          int32     = 100
-	moreIPv4                                    = "https://ipv4.moreip.jbecomputersolutions.com"
-	moreIPv6                                    = "https://ipv6.moreip.jbecomputersolutions.com"
 )
 
 func init() {
 
-	Trace = log.New(traceHandle,
-		"TRACE: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Info = log.New(infoHandle,
-		"INFO: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Warning = log.New(warningHandle,
-		"WARNING: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Error = log.New(errorHandle,
-		"ERROR: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
 	flag.StringVar(&domain, "d", "example.com", "enter your fully qualified domain name here. Default: example.com")
 	flag.StringVar(&domain, "domain", "example.com", "enter your fully qualified domain name here. Default: example.com")
-	flag.StringVar(&sessionProfile, "profile", "default", "enter the profile you wish to use to connect. Default: default")
-	flag.StringVar(&sessionProfile, "p", "default", "enter the profile you wish to use to connect. Default: default")
-	flag.StringVar(&awsRegion, "region", "us-east-1", "Enter region you wish to connect with. Default: us-east-1")
+	flag.StringVar(&moreIPv4, "v4", "https://ipv4.moreip.jbecomputersolutions.com", "enter an IPv4 endpoint to use to check your IPv4 address. Default:" +
+		"https://ipv4.moreip.jbecomputersolutions.com")
+	flag.StringVar(&moreIPv6, "v6", "https://ipv6.moreip.jbecomputersolutions.com", "enter an IPv6 endpoint to use to check your IPv6 address. Default:" +
+		"https://ipv6.moreip.jbecomputersolutions.com")
+	flag.StringVar(&dnsProviderPlugin, "p", "route53", "enter the provider plugin you wish to use for the dns API endpoint." +
+		" Default: route53")
 }
 
-// handleIPv4 handles cases where A record in r53. On match, do nothing. On mismatch, update to new val.
-func handleIPv4(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
-	var (
-		ipv4String string
-	)
-	svc := route53.NewFromConfig(sessionProfile)
+func worker(inputArgs utils.ArgVars)(err error){
+	var wg = sync.WaitGroup{}
+	//Marshal inputs to json to log as info logging later.
+	inputArgsJSON, err := json.MarshalIndent(inputArgs, "", "  ")
+	if err != nil {
+		fmt.Printf("unable to marshal input args to JSON. data")
+		return err
+	}
 
-	for i := 0; i < 3; i++ {
-		currentIPv4, err := http.Get(moreIPv4)
-		defer currentIPv4.Body.Close()
-		if err != nil && i < 3 {
-			time.Sleep(time.Duration(i) * time.Second)
-			err = nil
-			continue
-		} else if err != nil && i >= 3 {
-			Error.Println("Error getting ipv4 address.")
-			return false, err
+	//Check for existence of AAAA record and A records
+	records, err := edd.DNSRecordExists(domain)
+	if err != nil {
+		fmt.Printf("unable to resolve domain and return list of records.")
+		return err
+	}
+
+	for _, ip := range records {
+		recordType := ""
+		addr := net.ParseIP(ip)
+		if addr.To4() != nil && addr != nil {
+			recordType = "A"
+		} else if strings.Contains(ip, ":") && addr != nil {
+			recordType = "AAAA"
 		} else {
-			body, _ := ioutil.ReadAll(currentIPv4.Body)
-			ipv4String = string(body)
-			break
-		}
-	}
-	if *rrecord.ResourceRecords[0].Value == strings.Trim(ipv4String, "\n") {
-		Info.Println("IPv4 Records match. Doing nothing.")
-		return false, nil
-	}
-
-	Info.Println("IPv4 Records do not match. Updating.")
-	Info.Println("Current IPv4 address: ", ipv4String)
-	Info.Println("Current IPv4 record: ", *rrecord.ResourceRecords[0].Value)
-	*rrecord.ResourceRecords[0].Value = ipv4String
-	changeAction := "UPSERT"
-	changeBatch := route53.ChangeBatch{Changes: []*route53.Change{&route53.Change{Action: &changeAction, ResourceRecordSet: rrecord}}}
-	input := route53.ChangeResourceRecordSetsInput{
-		HostedZoneId: &zoneID,
-		ChangeBatch:  &changeBatch,
-	}
-	output, err := svc.ChangeResourceRecordSets(&input)
-	if err != nil {
-		return false, err
-	}
-	Info.Println(output)
-	return true, nil
-}
-
-// handleIPv6 handles cases where AAAA record in r53. On match, do nothing. On mismatch, update to new val.
-func handleIPv6(rrecord *route53.ResourceRecordSet, zoneID string) (update bool, err error) {
-	var (
-		ipv6String string
-	)
-	svc := route53.New(sess)
-	for i := 0; i < 3; i++ {
-		currentIPv6, err := http.Get(moreIPv6)
-		defer currentIPv6.Body.Close()
-		if err != nil && i < 3 {
-			time.Sleep(time.Duration(i) * time.Second)
-			err = nil
+			fmt.Printf("ip record is not of type A or AAAA")
 			continue
-		} else if err != nil && i >= 3 {
-			Error.Println("Error getting ipv6 address.")
-			return false, err
-		} else {
-			body, _ := ioutil.ReadAll(currentIPv6.Body)
-			ipv6String = string(body)
-			break
 		}
-	}
-	if *rrecord.ResourceRecords[0].Value == strings.Trim(ipv6String, "\n") {
-		Info.Println("IPv6 Records match. Doing nothing.")
-		return false, nil
+		wg.Add(1)
+		go edd.CheckAndUpdateRecords(ip, recordType, inputArgs, &wg)
 	}
 
-	Info.Println("IPv6 Records do not match. Updating.")
-	Info.Println("Current IPv6 address: ", ipv6String)
-	Info.Println("Current IPv6 record: ", *rrecord.ResourceRecords[0].Value)
-	*rrecord.ResourceRecords[0].Value = ipv6String
-	changeAction := "UPSERT"
-	changeBatch := route53.ChangeBatch{Changes: []*route53.Change{&route53.Change{Action: &changeAction, ResourceRecordSet: rrecord}}}
-	input := route53.ChangeResourceRecordSetsInput{
-		HostedZoneId: &zoneID,
-		ChangeBatch:  &changeBatch,
-	}
-	output, err := svc.ChangeResourceRecordSets(&input)
-	if err != nil {
-		return false, err
-	}
-	Info.Println(output)
-	return true, nil
+	wg.Wait()
+
+	//debug section remove later
+	fmt.Printf(string(inputArgsJSON))
+	fmt.Printf("records for domain (%s):\n %v\n", domain, records)
+	//end debug section
+	return nil
 }
 
-// checkDomainExists checks that the domain exists in Route53
-func checkDomainExists(baseDomain string) (zoneID string, err error) {
-	svc := route53.New(sess)
-
-	input := route53.ListHostedZonesByNameInput{DNSName: &baseDomain}
-	output, err := svc.ListHostedZonesByName(&input)
-
-	if err != nil {
-		return "", err
-	}
-	var zones string
-	for _, hostedZone := range output.HostedZones {
-		if *hostedZone.Name == baseDomain {
-			Info.Println("Output:\n", hostedZone)
-			zoneID = strings.Split(*hostedZone.Id, "/")[2]
-			return zoneID, err
-		}
-		zones = zones + "\nName: " + *hostedZone.Name + "\n" + "Zone ID: " + *hostedZone.Id
-	}
-
-	hostedZonesError := "Domain not found in R53. HostedZones:\n" + zones
-	err = errors.New(hostedZonesError)
-	return zoneID, err
-}
-
-// checkZoneRecords finds resource record sets and returns the set of them that match the domain
-func checkZoneRecords(zID string) (zonerecords []route53.ChangeResourceRecordSetsOutput, err error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithSharedConfigProfile(sessionProfile),
-	)
-
-	if err != nil {
-		fmt.Errorf("error loading Default config for profile: %s. Message:\n%w", sessionProfile, err)
-		return
-	}
-
-	svc := route53.NewFromConfig(cfg)
-
-	input := route53.ListResourceRecordSetsInput{HostedZoneId: &zID, MaxItems: &maxItems}
-	output, err := svc.ListResourceRecordSets(context.TODO(), &input)
-
-	if err != nil {
-		return zonerecords, err
-	}
-	for _, record := range output.ResourceRecordSets {
-		if *record.Name == domain {
-			zonerecords = append(zonerecords, *record)
-		}
-	}
-
-	return zonerecords, err
-}
-
-func main() {
+func main(){
+	//parse input flags
 	flag.Parse()
-	var (
-		err        error
-		baseDomain string
-	)
 
-	Info.Println("Check if domain is default")
-	if domain == "example.com" {
-		Info.Println("Checking if there is a locally defined FQDN.")
-		err = checkHostDomainNameExists(&domain)
-		if err != nil {
-			Error.Println("error checking hostname in OS. Error msg:\n", err)
-		}
+	inputVars := utils.ArgVars{
+		Domain: domain,
+		V4Endpoint: moreIPv4,
+		V6Endpoint: moreIPv6,
+		DNSProviderPlugin: dnsProviderPlugin,
+		DNSMaxRecordsReturned: 100,
 	}
 
-	//remove the trailing dot returned in DNS names
-	if domain[len(domain)-1:] != "." {
-		domain += "."
-	}
-	domainLen := len(strings.Split(domain, "."))
-	if domainLen > 2 {
-		baseDomain = strings.Join(strings.Split(domain, ".")[domainLen-3:], ".")
-	} else {
-		baseDomain = domain
+	err := worker(inputVars)
+	if err != nil {
+		fmt.Printf("Error executing main worker function. Error returned %v", err)
 	}
 
-	Info.Println("Checking if domain is in Route53")
-	zoneID, err := checkDomainExists(baseDomain)
-	if err != nil {
-		Error.Println("Domain: ", domain)
-		Error.Println(err)
-		os.Exit(1)
-	}
-	Info.Println("ZoneID: ", zoneID)
-	Info.Println("Checking to see what records exist for the domain.")
-	records, err := checkZoneRecords(zoneID)
-	if err != nil {
-		Error.Println("Records: ", records)
-		Error.Println(err)
-		os.Exit(1)
-	}
-	Info.Println("Checking if domain needs to be updated")
-	var updated = false
-	for _, record := range records {
-		if *record.Type == "A" {
-			updated, err = handleIPv4(&record, zoneID)
-			if err != nil {
-				Error.Println(err)
-				os.Exit(1)
-			}
-		}
-		if *record.Type == "AAAA" {
-			updated, err = handleIPv6(&record, zoneID)
-			if err != nil {
-				Error.Println(err)
-				os.Exit(1)
-			}
-		}
-	}
-	records, err = checkZoneRecords(zoneID)
-	if err != nil {
-		Error.Println("Records: ", records)
-		Error.Println(err)
-		os.Exit(1)
-	}
-	if updated {
-		Info.Println(records)
-	}
-	return
+	os.Exit(0)
 }
